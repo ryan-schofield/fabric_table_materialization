@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "..",
+			"name": "root"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.sql": "jinja-sql"
+		},
+		"editor.snippetSuggestions": "top"
+	}
+}

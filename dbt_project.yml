@@ -17,3 +17,12 @@ clean-targets:
 models:
   fabric_table_materialization:
     +materialized: table
+    intermediate:
+      +schema: intermediate
+    stage:
+      +schema: stage
+      +materialized: view
+      
+seeds:
+  +full_refresh: True
+  +schema: seed

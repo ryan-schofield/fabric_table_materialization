@@ -1,0 +1,18 @@
+fabric_table_materialization:
+  target: dev
+  outputs:
+    dev:
+      type: fabric
+      driver: 'ODBC Driver 18 for SQL Server'
+      server: "{{ env_var('DBT_FABRIC_SERVER') }}"
+      port: 1433
+      database: "{{ env_var('DBT_FABRIC_DATABASE') }}"
+      schema: dev
+      authentication: ServicePrincipal
+      tenant_id: "{{ env_var('DBT_FABRIC_SA_TENANT') }}"
+      client_id: "{{ env_var('DBT_ENV_SECRET_FABRIC_APP_ID') }}"
+      client_secret: "{{ env_var('DBT_ENV_SECRET_FABRIC_SECRET') }}"
+      threads: 8
+      trust_cert: true
+      encrypt: false
+      retries: 1
