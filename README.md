@@ -11,7 +11,6 @@ The custom table materialization in [`macros/materializations/table.sql`](macros
 - Ensuring **column consistency** between the existing target table and the new compiled SQL output using the [`check_column_consistency`](macros/check_column_consistency.sql) macro.
 - Avoiding unnecessary `DROP TABLE` / `CREATE TABLE` cycles if the schema has not changed, thus reducing disruption to downstream Fabric semantic models.
 - Handling **Fabric-specific quirks** where after a `DROP` + `CTAS`, the semantic model often fails to register the new underlying table location.
-- Optionally replacing the destructive refresh with an **overwrite-in-place pattern** or intermediate rename to minimize metadata breakages.
 
 **Key steps performed:**
 1. Check if the table already exists.
@@ -19,7 +18,7 @@ The custom table materialization in [`macros/materializations/table.sql`](macros
 3. If schema matches:
    - Overwrite table data in place.
 4. If schema differs:
-   - Use a safe refresh approach to avoid breaking table references in Fabric.
+   - Fall back to default behavior (drop and recreate).
    
 ---
 
@@ -27,20 +26,65 @@ The custom table materialization in [`macros/materializations/table.sql`](macros
 
 To integrate this materialization into another dbt project:
 
-1. **Copy the macros**  
-   Copy the entire `macros/materializations/` directory and `macros/check_column_consistency.sql` into your dbt project’s `macros/` folder.
+1. **Copy the macros**
+   Copy the entire `macros/materializations/` directory and `macros/check_column_consistency.sql` into your dbt project's `macros/` folder.
 
-2. **Reference the materialization**  
-   In your model’s `.sql` file, set the materialization:
+2. **Configure the materialization**
+   You can apply this custom materialization at different levels:
+
+### Model-Level Configuration
+   In your model's `.sql` file, set the materialization:
    ```jinja
    {{ config(materialized='table', persist_docs={'relation': true, 'columns': true}) }}
    ```
-   This will now use the custom materialization instead of dbt’s default.
 
-3. **Adjust for your database**  
-   The provided version is tailored for Microsoft Fabric (T-SQL). If using with another database, update SQL syntax in the macros accordingly.
+### Project-Level Configuration
+   Set the default materialization for all models in your `dbt_project.yml`:
+   ```yaml
+   models:
+     your_project_name:
+       +materialized: table  # Uses custom table materialization for all models
+   ```
 
-4. **Optional settings**  
+### Schema-Level Configuration
+   Apply the materialization to specific schemas or model directories:
+   ```yaml
+   models:
+     your_project_name:
+       staging:
+         +materialized: view  # Keep staging as views
+       intermediate:
+         +materialized: table  # Use custom table materialization
+         +schema: intermediate
+       marts:
+         +materialized: table  # Use custom table materialization
+         +schema: marts
+   ```
+
+3. **Using Named Materializations (Alternative Approach)**
+   If you want to use the custom materialization alongside dbt's default table materialization, you can rename it:
+
+   a. **Rename the materialization** in `macros/materializations/table.sql`:
+   ```jinja
+   {% materialization fabric_table, adapter='fabric' %}
+   ```
+
+   b. **Use the named materialization** in your models:
+   ```jinja
+   {{ config(materialized='fabric_table') }}
+   ```
+
+   c. **Configure in dbt_project.yml** for specific use cases:
+   ```yaml
+   models:
+     your_project_name:
+       critical_tables:
+         +materialized: fabric_table  # Use Fabric-optimized materialization
+       regular_tables:
+         +materialized: table  # Use dbt's default table materialization
+   ```
+
+4. **Optional settings**
    You can enhance schema checks, add logging, or configure runtime options by modifying the macros.
 
 ---
@@ -63,8 +107,9 @@ By using this custom materialization:
 
 ---
 
-### Example Usage
+## 4. Configuration Examples and Best Practices
 
+### Basic Model Usage
 ```sql
 -- models/my_table.sql
 {{ config(materialized='table') }}
@@ -76,11 +121,142 @@ SELECT
 FROM {{ ref('source_data') }}
 ```
 
+### Advanced Project Configuration Example
+```yaml
+# dbt_project.yml
+models:
+  your_project_name:
+    # Default to views for development speed
+    +materialized: view
+    
+    staging:
+      # Keep staging lightweight
+      +materialized: view
+      +schema: staging
+    
+    intermediate:
+      # Use custom table materialization for intermediate processing
+      +materialized: table
+      +schema: intermediate
+    
+    marts:
+      # Critical business tables use Fabric-optimized materialization
+      +materialized: table
+      +schema: marts
+      
+    # Specific high-volume tables that need the optimization
+    critical_models:
+      +materialized: table
+      +schema: critical
+```
+
+### Using Named Materialization for Selective Application
+If you rename the materialization to `fabric_table`, you can selectively apply it:
+
+```yaml
+# dbt_project.yml
+models:
+  your_project_name:
+    # Most models use standard dbt table materialization
+    +materialized: table
+    
+    # Only specific models that have Fabric semantic model dependencies
+    fabric_dependent:
+      +materialized: fabric_table  # Uses the custom Fabric-optimized logic
+      +schema: semantic_models
+```
+
+```sql
+-- models/fabric_dependent/customer_summary.sql
+{{ config(
+    materialized='fabric_table',
+    persist_docs={'relation': true, 'columns': true}
+) }}
+
+SELECT
+    customer_id,
+    total_orders,
+    lifetime_value
+FROM {{ ref('customer_orders') }}
+```
+
+### Environment-Specific Configuration
+```yaml
+# dbt_project.yml
+models:
+  your_project_name:
+    +materialized: "{{ 'table' if target.name == 'prod' else 'view' }}"
+    
+    # Critical production tables always use Fabric optimization
+    critical_tables:
+      +materialized: "{{ 'fabric_table' if target.name == 'prod' else 'table' }}"
+```
+
+### Running the Models
 When you run:
 ```bash
 dbt run --select my_table
 ```
-It will now apply the **Fabric-friendly** table replacement logic.
+It will apply the **Fabric-friendly** table replacement logic based on your configuration.
+
+For selective runs with named materialization:
+```bash
+# Run only models using the custom Fabric materialization
+dbt run --select config.materialized:fabric_table
+
+# Run all table materializations (both default and custom)
+dbt run --select config.materialized:table,config.materialized:fabric_table
+```
+
+---
+
+## 5. Troubleshooting and Considerations
+
+### When to Use Project vs Schema vs Model Level Configuration
+
+**Project Level (`+materialized: table`)**
+- ✅ Use when most of your models benefit from the Fabric optimization
+- ✅ Simplifies configuration management
+- ⚠️ May impact development speed if applied to all models including staging
+
+**Schema Level**
+- ✅ Best for organizing by data layer (staging → intermediate → marts)
+- ✅ Allows different strategies per layer
+- ✅ Recommended approach for most projects
+
+**Model Level**
+- ✅ Use for exceptions to your general strategy
+- ✅ Good for testing the materialization on specific models first
+- ⚠️ Can become difficult to manage at scale
+
+### Named Materialization Benefits
+
+Using a renamed materialization (e.g., `fabric_table`) provides:
+- **Flexibility**: Use both default dbt and custom Fabric logic in the same project
+- **Gradual adoption**: Test on specific models before broader rollout
+- **Clear intent**: Makes it obvious which models use Fabric-specific optimizations
+- **Easier debugging**: Can easily identify which materialization logic is being used
+
+### Common Issues and Solutions
+
+**Issue**: Models still dropping and recreating tables
+- **Solution**: Verify the materialization is correctly named and the macro files are in the right location
+- **Check**: Run `dbt debug` to ensure macros are being loaded
+
+**Issue**: Column consistency check failing unexpectedly
+- **Solution**: Review the [`check_column_consistency`](macros/check_column_consistency.sql) macro for data type mapping issues
+- **Check**: Ensure your SQL doesn't have complex CTEs that might confuse the column detection
+
+**Issue**: Performance degradation with the custom materialization
+- **Solution**: The truncate/insert approach may be slower for very large tables
+- **Consider**: Using the named approach and applying selectively to tables with Fabric semantic model dependencies
+
+### Migration Strategy
+
+1. **Start small**: Use model-level configuration on a few critical tables
+2. **Test thoroughly**: Verify semantic models continue working after dbt runs
+3. **Expand gradually**: Move to schema-level configuration for broader adoption
+4. **Monitor**: Watch for any performance or reliability issues
 
 ---
 
@@ -88,3 +264,4 @@ It will now apply the **Fabric-friendly** table replacement logic.
 - [dbt Documentation](https://docs.getdbt.com/docs/introduction)
 - [Microsoft Fabric Overview](https://learn.microsoft.com/en-us/fabric/)
 - [Power BI Semantic Models](https://learn.microsoft.com/en-us/power-bi/connect-data/semanticmodels)
+- [dbt Materialization Configuration](https://docs.getdbt.com/reference/model-configs#materialized)
