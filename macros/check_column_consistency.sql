@@ -103,7 +103,7 @@
         'columns_match': false,
         'existing_columns': [],
         'model_columns': [],
-        'error': 'Table does not exist - this would be a new table creation'
+        'error': 'Table does not exist - this is a new table creation'
     } -%}
   {%- endif -%}
   

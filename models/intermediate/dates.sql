@@ -17,7 +17,7 @@ WITH
         CROSS APPLY {{ ref('ints') }} AS ten_thousands
     )
 
-SELECT 
+SELECT
     CAST(NULLIF(DATEADD(DAY, y.int_range, '{{ start_date }}'), '1900-01-01') AS DATE) AS date_sid
 FROM integer_expansion AS y
 WHERE y.int_range <= DATEDIFF(DAY, '{{ start_date }}', '{{ end_date }}')

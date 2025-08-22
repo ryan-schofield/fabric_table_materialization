@@ -87,6 +87,47 @@ To integrate this materialization into another dbt project:
 4. **Optional settings**
    You can enhance schema checks, add logging, or configure runtime options by modifying the macros.
 
+### Logging Configuration
+
+The custom materialization supports a `log_to_stdout` configuration option that controls whether logging messages from the materialization process are sent to stdout. This can be useful for debugging and monitoring table creation and update operations.
+
+**Default behavior**: `log_to_stdout` defaults to `false`, meaning logs are only visible in dbt's standard logging output.
+
+#### Model-Level Logging Configuration
+```jinja
+{{ config(
+    materialized='table',
+    meta={'log_to_stdout': true}
+) }}
+```
+
+#### Schema-Level Logging Configuration
+```yaml
+# dbt_project.yml
+models:
+  your_project_name:
+    marts:
+      +materialized: table
+      +meta:
+        log_to_stdout: true  # Enable stdout logging for all marts models
+```
+
+#### Project-Level Logging Configuration
+```yaml
+# dbt_project.yml
+models:
+  your_project_name:
+    +materialized: table
+    +meta:
+      log_to_stdout: true  # Enable stdout logging for all models using table materialization
+```
+
+When `log_to_stdout` is enabled, you'll see detailed messages about:
+- Whether a new table is being created
+- Whether an existing table's columns match and truncate/insert is being used
+- Whether a table is being dropped and recreated due to column mismatches
+- When relations are being dropped (e.g., views being replaced with tables)
+
 ---
 
 > **Note:** This is an **early implementation** of the custom materialization.
@@ -170,7 +211,8 @@ models:
 -- models/fabric_dependent/customer_summary.sql
 {{ config(
     materialized='fabric_table',
-    persist_docs={'relation': true, 'columns': true}
+    persist_docs={'relation': true, 'columns': true},
+    meta={'log_to_stdout': true}  -- Enable detailed logging for this critical table
 ) }}
 
 SELECT
@@ -186,10 +228,16 @@ FROM {{ ref('customer_orders') }}
 models:
   your_project_name:
     +materialized: "{{ 'table' if target.name == 'prod' else 'view' }}"
+    # Enable logging in development for debugging
+    +meta:
+      log_to_stdout: "{{ true if target.name == 'dev' else false }}"
     
     # Critical production tables always use Fabric optimization
     critical_tables:
       +materialized: "{{ 'fabric_table' if target.name == 'prod' else 'table' }}"
+      # Always log critical table operations in production
+      +meta:
+        log_to_stdout: "{{ true if target.name == 'prod' else false }}"
 ```
 
 ### Running the Models

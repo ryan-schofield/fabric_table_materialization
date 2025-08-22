@@ -17,6 +17,8 @@ clean-targets:
 models:
   fabric_table_materialization:
     +materialized: table
+    +meta:
+      log_to_stdout: true
     intermediate:
       +schema: intermediate
     stage:
