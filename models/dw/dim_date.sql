@@ -14,6 +14,5 @@ SELECT
     , DATETRUNC(MONTH, date_sid) AS month_start_date
     , EOMONTH(date_sid) AS month_end_date
     , DATETRUNC(YEAR, date_sid) AS year_start_date
-    , DATEADD(DAY, -1, DATEADD(YEAR, 1, DATETRUNC(YEAR, date_sid)))
-        AS year_end_date
+    , DATEADD(DAY, -1, DATEADD(YEAR, 1, DATETRUNC(YEAR, date_sid))) AS year_end_date
 FROM {{ ref('dates') }}

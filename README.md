@@ -265,7 +265,7 @@ dbt run --select config.materialized:table,config.materialized:fabric_table
 **Project Level (`+materialized: table`)**
 - ✅ Use when most of your models benefit from the Fabric optimization
 - ✅ Simplifies configuration management
-- ⚠️ May impact development speed if applied to all models including staging
+- ⚠️ May impact dbt execution times if applied to all models including staging
 
 **Schema Level**
 - ✅ Best for organizing by data layer (staging → intermediate → marts)
@@ -284,20 +284,6 @@ Using a renamed materialization (e.g., `fabric_table`) provides:
 - **Gradual adoption**: Test on specific models before broader rollout
 - **Clear intent**: Makes it obvious which models use Fabric-specific optimizations
 - **Easier debugging**: Can easily identify which materialization logic is being used
-
-### Common Issues and Solutions
-
-**Issue**: Models still dropping and recreating tables
-- **Solution**: Verify the materialization is correctly named and the macro files are in the right location
-- **Check**: Run `dbt debug` to ensure macros are being loaded
-
-**Issue**: Column consistency check failing unexpectedly
-- **Solution**: Review the [`check_column_consistency`](macros/check_column_consistency.sql) macro for data type mapping issues
-- **Check**: Ensure your SQL doesn't have complex CTEs that might confuse the column detection
-
-**Issue**: Performance degradation with the custom materialization
-- **Solution**: The truncate/insert approach may be slower for very large tables
-- **Consider**: Using the named approach and applying selectively to tables with Fabric semantic model dependencies
 
 ### Migration Strategy
 
