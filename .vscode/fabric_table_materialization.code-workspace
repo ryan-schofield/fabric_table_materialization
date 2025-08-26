@@ -9,6 +9,7 @@
 		"files.associations": {
 			"*.sql": "jinja-sql"
 		},
-		"editor.snippetSuggestions": "top"
+		"editor.snippetSuggestions": "top",
+		"python.defaultInterpreterPath": ".\\.venv\\Scripts\\python.exe"
 	}
 }

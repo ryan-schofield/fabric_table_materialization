@@ -90,14 +90,64 @@
     {%- set model_column_names = model_column_info | map(attribute='name') | map('lower') | list -%}
     
     {%- set columns_match = (existing_column_names | sort) == (model_column_names | sort) -%}
+
+    {%- set columns_to_drop = [] -%}
+    {%- set columns_to_add = [] -%}
     
     {# Return detailed comparison result #}
+    {%- for existing_col in existing_column_info -%}
+      {%- if existing_col.name | lower not in model_column_names -%}
+        {%- do columns_to_drop.append(existing_col.name) -%}
+      {%- endif -%}
+    {%- endfor -%}
+
+    {%- for model_col in model_column_info -%}
+      {%- if model_col.name | lower not in existing_column_names -%}
+        {# Build complete column definition for ALTER TABLE ADD #}
+        {%- set base_dtype = model_col.dtype or 'VARCHAR' -%}
+        {%- set full_column_definition = base_dtype -%}
+        
+        {# Handle character types with size specifications #}
+        {%- if base_dtype.upper() in ('VARCHAR', 'CHAR', 'NVARCHAR', 'NCHAR') and model_col.char_size -%}
+          {%- set full_column_definition = base_dtype ~ '(' ~ model_col.char_size ~ ')' -%}
+        {%- elif base_dtype.upper() in ('VARCHAR', 'NVARCHAR') and not model_col.char_size -%}
+          {%- set full_column_definition = base_dtype ~ '(8000)' -%}
+        {%- elif base_dtype.upper() in ('CHAR', 'NCHAR') and not model_col.char_size -%}
+          {%- set full_column_definition = base_dtype ~ '(1)' -%}
+        {# Handle numeric types with precision and scale #}
+        {%- elif base_dtype.upper() in ('DECIMAL', 'NUMERIC') and model_col.numeric_precision -%}
+          {%- if model_col.numeric_scale -%}
+            {%- set full_column_definition = base_dtype ~ '(' ~ model_col.numeric_precision ~ ',' ~ model_col.numeric_scale ~ ')' -%}
+          {%- else -%}
+            {%- set full_column_definition = base_dtype ~ '(' ~ model_col.numeric_precision ~ ')' -%}
+          {%- endif -%}
+        {%- elif base_dtype.upper() in ('FLOAT', 'REAL') and model_col.numeric_precision -%}
+          {%- set full_column_definition = base_dtype ~ '(' ~ model_col.numeric_precision ~ ')' -%}
+        {# Handle other data types that might have precision #}
+        {%- elif base_dtype.upper() in ('TIME', 'DATETIME2', 'DATETIMEOFFSET') and model_col.numeric_scale -%}
+          {%- set full_column_definition = base_dtype ~ '(' ~ model_col.numeric_scale ~ ')' -%}
+        {%- endif -%}
+        
+        {%- do columns_to_add.append({
+            'name': model_col.name,
+            'dtype': base_dtype,
+            'full_definition': full_column_definition,
+            'char_size': model_col.char_size,
+            'numeric_precision': model_col.numeric_precision,
+            'numeric_scale': model_col.numeric_scale
+        }) -%}
+      {%- endif -%}
+    {%- endfor -%}
+
     {%- set result = {
         'columns_match': columns_match,
         'existing_columns': existing_column_info,
-        'model_columns': model_column_info
+        'model_columns': model_column_info,
+        'columns_to_drop': columns_to_drop,
+        'columns_to_add': columns_to_add
     } -%}
-    
+    {{ log("Columns to add: " ~ result.columns_to_add) }}
+    {{ log("Columns to drop: " ~ result.columns_to_drop) }}
   {%- else -%}
     {%- set result = {
         'columns_match': false,
@@ -106,7 +156,6 @@
         'error': 'Table does not exist - this is a new table creation'
     } -%}
   {%- endif -%}
-  
   {{ return(result) }}
 
 {% endmacro %}

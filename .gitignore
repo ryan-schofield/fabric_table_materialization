@@ -1,10 +1,14 @@
 .env
 .venv
+.envrc
+
 target/
 dbt_packages/
 logs/
+
 __pycache__/
 *.pyc
+
 set_env.ps1
 .user.yml
 
